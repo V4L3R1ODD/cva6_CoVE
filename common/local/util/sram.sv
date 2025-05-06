@@ -20,6 +20,7 @@
 
 module sram #(
     parameter DATA_WIDTH = 64,
+    parameter BYTE_WIDTH = 8,
     parameter USER_WIDTH = 1,
     parameter USER_EN    = 0,
     parameter NUM_WORDS  = 1024,

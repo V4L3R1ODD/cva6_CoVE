@@ -61,7 +61,12 @@ module cva6_mmu
     output logic [CVA6Cfg.PPNW-1:0] lsu_dtlb_ppn_o,  // ppn (send same cycle as hit)
     // Cycle 1
     output logic lsu_valid_o,  // translation is valid
+    
+    
     output logic [CVA6Cfg.PLEN-1:0] lsu_paddr_o,  // translated address
+    //output logic [CVA6Cfg.XLEN-1:0] lsu_paddr_o,  // translated address
+
+
     output exception_t lsu_exception_o,  // address translation threw an exception
     // General control signals
     input riscv::priv_lvl_t priv_lvl_i,
@@ -357,34 +362,46 @@ module cva6_mmu
   );
 
 
-  logic [63:0] mmpt_reg_const = 64'h1300_0000_0000_0000;
+  logic [63:0] mmpt_reg_const = 64'h0300_0000_0000_0000;
   logic lsu_valid_int;
-  logic [CVA6Cfg.PLEN-1:0] lsu_paddr_int;
+  logic [CVA6Cfg.XLEN-1:0] lsu_paddr_int;
 
-  dcache_req_i_t mpt_req_i_int;
-  dcache_req_o_t mpt_req_o_int;
+  dcache_req_o_t mpt_req_i_int;
+  dcache_req_i_t mpt_req_o_int;
 
-  dcache_req_i_t ptw_req_i_int;
-  dcache_req_o_t ptw_req_o_int;
+  dcache_req_o_t ptw_req_i_int;
+  dcache_req_i_t ptw_req_o_int;
 
   logic dummy0, dummy2, dummy3, dummy4;
   logic [2:0] dummy1;
-  logic [72:0 ]dummy5;
+  logic [72:0] dummy5;
 
   assign lsu_valid_o = (~dummy2) & (dummy0 | dummy1 | dummy3 | dummy4);
-  assign lsu_paddr_o = lsu_paddr_int;
+  assign lsu_paddr_int = lsu_paddr_o;
+
 
   always_comb begin
+    mpt_req_i_int = '0;
+    ptw_req_i_int = '0;
+
       if (lsu_valid_int) begin
-          req_port_o = mpt_req_i_int;
-          mpt_req_o_int = req_port_i;
+          req_port_o = mpt_req_o_int;
+          mpt_req_i_int = req_port_i;
       end else begin
-          req_port_o = ptw_req_i_int;
-          ptw_req_o_int = req_port_i;
+          req_port_o = ptw_req_o_int;
+          ptw_req_i_int = req_port_i;
       end
   end
 
 
+/*
+  always_comb begin
+
+          req_port_o = ptw_req_o_int;
+          ptw_req_i_int = req_port_i;
+  
+  end
+*/
   // RV_MPT
   mpt_top # (
 
@@ -398,15 +415,15 @@ module cva6_mmu
       .mmpt_reg_i          ( mmpt_reg_const      ),
       .access_type_i       ( riscv::ACCESS_READ  ),
       
-      .m_mem_req           ( mpt_req_i_int.data_req     ),
-      .m_mem_gnt           ( mpt_req_o_int.data_gnt     ),
-      .m_mem_valid         ( mpt_req_o_int.data_rvalid  ),
-      .m_mem_addr          ( {mpt_req_i_int.address_tag, mpt_req_i_int.address_index}),
-      .m_mem_rdata         ( mpt_req_o_int.data_rdata   ),
-      .m_mem_wdata         ( mpt_req_i_int.data_wdata   ),
-      .m_mem_we            ( mpt_req_i_int.data_we      ),
-      .m_mem_be            ( mpt_req_i_int.data_be      ),
-      .m_mem_error         ( mpt_req_i_int.kill_req     ),
+      .m_mem_req           ( mpt_req_o_int.data_req     ),
+      .m_mem_gnt           ( mpt_req_i_int.data_gnt     ),
+      .m_mem_valid         ( mpt_req_i_int.data_rvalid  ),
+      .m_mem_addr          ( {mpt_req_o_int.address_tag, mpt_req_o_int.address_index}),
+      .m_mem_rdata         ( mpt_req_i_int.data_rdata   ),
+      .m_mem_wdata         ( mpt_req_o_int.data_wdata   ),
+      .m_mem_we            ( mpt_req_o_int.data_we      ),
+      .m_mem_be            ( mpt_req_o_int.data_be      ),
+      .m_mem_error         ( mpt_req_o_int.kill_req     ),
       
       .access_page_fault_o ( dummy0                     ),
       .format_error_o      ( dummy1                     ),
@@ -559,7 +576,6 @@ module cva6_mmu
   logic lsu_is_store_n, lsu_is_store_q;
   logic dtlb_hit_n, dtlb_hit_q;
   logic [CVA6Cfg.PtLevels-2:0] dtlb_is_page_n, dtlb_is_page_q;
-  exception_t misaligned_ex_n, misaligned_ex_q;
 
   // check if we need to do translation or if we are always ready (e.g.: we are not translating anything)
   assign lsu_dtlb_hit_o = (en_ld_st_translation_i || en_ld_st_g_translation_i) ? dtlb_lu_hit : 1'b1;
@@ -574,13 +590,9 @@ module cva6_mmu
     dtlb_hit_n = dtlb_lu_hit;
     lsu_is_store_n = lsu_is_store_i;
     dtlb_is_page_n = dtlb_is_page;
-    misaligned_ex_n = misaligned_ex_i;
 
     lsu_valid_int = lsu_req_q;
-    lsu_exception_o = misaligned_ex_q;
-
-    // mute misaligned exceptions if there is no request otherwise they will throw accidental exceptions
-    misaligned_ex_n.valid = misaligned_ex_i.valid & lsu_req_i;
+    lsu_exception_o = misaligned_ex_i;
 
     // we work with SV39 or SV32, so if VM is enabled, check that all bits [CVA6Cfg.VLEN-1:CVA6Cfg.SV-1] are equal to bit [CVA6Cfg.SV]
     canonical_addr_check = (lsu_req_i && en_ld_st_translation_i &&
@@ -605,7 +617,7 @@ module cva6_mmu
     lsu_dtlb_ppn_o        = (CVA6Cfg.PPNW)'(lsu_vaddr_n[((CVA6Cfg.PLEN > CVA6Cfg.VLEN) ? CVA6Cfg.VLEN -1: CVA6Cfg.PLEN -1 ):12]);
 
     // translation is enabled and no misaligned exception occurred
-    if ((en_ld_st_translation_i || en_ld_st_g_translation_i) && !misaligned_ex_q.valid) begin
+    if ((en_ld_st_translation_i || en_ld_st_g_translation_i) && !misaligned_ex_i.valid) begin
       lsu_valid_int = 1'b0;
 
       lsu_dtlb_ppn_o = (en_ld_st_g_translation_i && CVA6Cfg.RVH)? dtlb_g_content.ppn :dtlb_content.ppn;
@@ -805,7 +817,6 @@ module cva6_mmu
       dtlb_is_page_q  <= '0;
       lsu_tinst_q     <= '0;
       hs_ld_st_inst_q <= '0;
-      misaligned_ex_q <= '0;
     end else begin
       lsu_vaddr_q    <= lsu_vaddr_n;
       lsu_req_q      <= lsu_req_n;
@@ -819,7 +830,6 @@ module cva6_mmu
         hs_ld_st_inst_q <= hs_ld_st_inst_n;
         dtlb_gpte_q     <= dtlb_gpte_n;
         lsu_gpaddr_q    <= lsu_gpaddr_n;
-        misaligned_ex_q <= misaligned_ex_n;
       end
     end
   end
