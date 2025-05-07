@@ -103,6 +103,12 @@ module cva6_mmu
     input dcache_req_o_t req_port_i,
     output dcache_req_i_t req_port_o,
 
+
+    // MPT
+    //output logic mpt_access_page_fault_o,          // Access fault output (indicates if access is not allowed) 
+    //output page_format_fault_e mpt_format_error_o, // Format fault output (generic error in address translation)
+    //output logic mpt_ptw_busy_o,
+
     // PMP
 
     input riscv::pmpcfg_t [avoid_neg(CVA6Cfg.NrPMPEntries-1):0]                   pmpcfg_i,
@@ -376,7 +382,7 @@ module cva6_mmu
   logic [2:0] dummy1;
   logic [72:0] dummy5;
 
-  assign lsu_valid_o = (~dummy2) & (dummy0 | dummy1 | dummy3 | dummy4);
+  // assign lsu_valid_o = (~dummy2) & (dummy0 | dummy1 | dummy3 | dummy4);
   assign lsu_paddr_int = lsu_paddr_o;
 
 
@@ -385,8 +391,8 @@ module cva6_mmu
     ptw_req_i_int = '0;
 
       if (lsu_valid_int) begin
-          req_port_o = mpt_req_o_int;
-          mpt_req_i_int = req_port_i;
+          req_port_o = mpt_req_o_int;  // request to dcache
+          mpt_req_i_int = req_port_i;  // response from dcache
       end else begin
           req_port_o = ptw_req_o_int;
           ptw_req_i_int = req_port_i;
@@ -412,7 +418,7 @@ module cva6_mmu
       .ptw_enable_i        ( lsu_valid_int       ),
       .spa_i               ( lsu_paddr_int       ),
       .addr_valid_i        ( lsu_valid_int       ),
-      .mmpt_reg_i          ( mmpt_reg_const      ),
+      .mmpt_reg_i          ( 64'h0300_0000_0000_0000 ),
       .access_type_i       ( riscv::ACCESS_READ  ),
       
       .m_mem_req           ( mpt_req_o_int.data_req     ),
@@ -428,7 +434,8 @@ module cva6_mmu
       .access_page_fault_o ( dummy0                     ),
       .format_error_o      ( dummy1                     ),
       .ptw_busy_o          ( dummy2                     ),
-      .ptw_valid_o         ( dummy3                     ),
+      //.ptw_valid_o         ( dummy3                     ),
+      .ptw_valid_o         ( lsu_valid_o                ),
       .plb_entry_o         ( dummy5                     ),
       .allow_o             ( dummy4                     )
   );
